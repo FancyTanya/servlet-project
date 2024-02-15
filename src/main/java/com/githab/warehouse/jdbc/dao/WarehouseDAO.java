@@ -1,30 +1,31 @@
-package com.githab.warehouse.dao;
+package com.githab.warehouse.jdbc.dao;
 
 
-import com.githab.warehouse.model.Warehouse;
+import com.githab.warehouse.domain.Warehouse;
+import com.githab.warehouse.jdbc.DatabaseManager;
+import lombok.SneakyThrows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+
+import static com.githab.warehouse.jdbc.DatabaseManager.getDataSource;
 
 public class WarehouseDAO {
-    private final PooledDataSource dataSource;
     private final static Logger logger = LoggerFactory.getLogger(WarehouseDAO.class);
 
-    public WarehouseDAO(PooledDataSource dataSource) {
-        this.dataSource = dataSource;
+    public WarehouseDAO() {
+        DatabaseManager.setup();
     }
-
 
     public List<Warehouse> searchWarehouses(int id, String name, String addressLine1, String addressLine2, String city, String state, String country, int inventoryQuantity, int limit, int offset, String sortBy) throws SQLException {
         List<Warehouse> warehouses = new ArrayList<>();
         String sql = "SELECT * FROM warehouse WHERE id LIKE ? AND name LIKE ? AND address_line_1 LIKE ? AND address_line_2 LIKE ? AND city LIKE ? AND state LIKE ? AND country LIKE ? AND inventory_quantity >= ? ORDER BY " + sortBy + " LIMIT ? OFFSET ?";
 
-        try (PreparedStatement statement = dataSource.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement statement = getDataSource().getConnection().prepareStatement(sql)) {
             statement.setInt(1, id);
             statement.setString(2, "%" + name + "%");
             statement.setString(3, "%" + addressLine1 + "%");
@@ -43,43 +44,62 @@ public class WarehouseDAO {
                 logger.info("Search warehouses ...");
             }
         } catch (SQLException e) {
-            throw new RuntimeException(e);
+            logger.error(e.getMessage());
         }
 
         logger.info("Search result is: {} warehouses found", warehouses.size());
         return warehouses;
     }
 
-    public long create(Warehouse warehouse) {
-        String sql = "INSERT INTO warehouse (name, address_line_1, address_line_2, city, state, country, inventory_quantity) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?)";
 
-        long createdRows = 0;
+    @SneakyThrows
+    public int create(Warehouse warehouse) {
+        String sql = "INSERT INTO warehouse (id, name, address_line_1, address_line_2, city, state, country, inventory_quantity) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
-        try (PreparedStatement statement = dataSource.getConnection().prepareStatement(sql)) {
-            statement.setString(1, warehouse.getName());
-            statement.setString(2, warehouse.getAddressLine1());
-            statement.setString(3, warehouse.getAddressLine2());
-            statement.setString(4, warehouse.getCity());
-            statement.setString(5, warehouse.getState());
-            statement.setString(6, warehouse.getCountry());
-            statement.setInt(7, warehouse.getInventoryQuantity());
+        int createdId = 0;
 
-            createdRows = statement.executeUpdate();
-            logger.info("Save warehouse: {}", warehouse);
+        try (Connection connection = getDataSource().getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            connection.setAutoCommit(false);
+
+            statement.setInt(1, warehouse.getId());
+            statement.setString(2, warehouse.getName());
+            statement.setString(3, warehouse.getAddressLine1());
+            statement.setString(4, warehouse.getAddressLine2());
+            statement.setString(5, warehouse.getCity());
+            statement.setString(6, warehouse.getState());
+            statement.setString(7, warehouse.getCountry());
+            statement.setInt(8, warehouse.getInventoryQuantity());
+
+            int createdRows = statement.executeUpdate();
+
+            if (createdRows > 0) {
+                ResultSet generatedKeys = statement.getGeneratedKeys();
+                if (generatedKeys.next()) {
+                    createdId = generatedKeys.getInt(1);
+                    logger.info("Warehouse created with ID: {}", createdId);
+                } else {
+                    logger.error("Failed to retrieve the generated ID for Warehouse: {}", warehouse.getName());
+                }
+            } else {
+                logger.error("Failed to create Warehouse: {}", warehouse.getName());
+            }
+            connection.commit();
         } catch (SQLException e) {
             logger.error("There is an exception by saving Warehouse: {}", warehouse.getName());
-            e.printStackTrace();
+
         }
-        return createdRows;
+        return createdId;
     }
+
 
     public long update(Warehouse warehouse) {
         String sql = "UPDATE warehouse SET name=?, address_line_1=?, address_line_2=?, city=?, state=?, country=?, inventory_quantity=? " +
                 "WHERE id=?";
         long updatedRows = 0;
 
-        try (PreparedStatement statement = dataSource.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement statement = getDataSource().getConnection().prepareStatement(sql)) {
             statement.setString(1, warehouse.getName());
             statement.setString(2, warehouse.getAddressLine1());
             statement.setString(3, warehouse.getAddressLine2());
@@ -93,7 +113,6 @@ public class WarehouseDAO {
             logger.info("Update warehouse by name: {}", warehouse.getName());
         } catch (SQLException e) {
             logger.error("There is an exception by update Warehouse by name: {}", warehouse.getName());
-            e.printStackTrace();
         }
         return updatedRows;
     }
@@ -102,7 +121,7 @@ public class WarehouseDAO {
         String sql = "DELETE FROM warehouse WHERE id=?";
         long deletedRows = 0;
 
-        try (PreparedStatement statement = dataSource.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement statement = getDataSource().getConnection().prepareStatement(sql)) {
             statement.setInt(1, warehouseId);
             deletedRows = statement.executeUpdate();
             logger.info("{} row(s) deleted from Warehouse with ID: {}", deletedRows, warehouseId);
@@ -114,11 +133,11 @@ public class WarehouseDAO {
         return deletedRows;
     }
 
-    public Warehouse findById(int warehouseId) {
+    public Optional<Warehouse> findById(int warehouseId) {
         String sql = "SELECT * FROM warehouse WHERE id=?";
         Warehouse warehouse = null;
 
-        try (PreparedStatement statement = dataSource.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement statement = getDataSource().getConnection().prepareStatement(sql)) {
             statement.setInt(1, warehouseId);
             ResultSet resultSet = statement.executeQuery();
 
@@ -129,28 +148,27 @@ public class WarehouseDAO {
             logger.info("Find Warehouse by ID : {}", warehouseId);
         } catch (SQLException e) {
             logger.error("Find Warehouse by ID was caused by: {}", e.getCause().toString());
-            e.printStackTrace();
         }
 
-        return warehouse;
+        return Optional.ofNullable(warehouse);
     }
 
     public List<Warehouse> findAll() {
         List<Warehouse> warehouses = new ArrayList<>();
         String sql = "SELECT * FROM warehouse";
 
-        try (PreparedStatement statement = dataSource.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement statement = getDataSource().getConnection().prepareStatement(sql)) {
             try (ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
                     Warehouse warehouse = new Warehouse();
                     warehouse.setId(resultSet.getInt("id"));
                     warehouse.setName(resultSet.getString("name"));
-                    warehouse.setAddressLine1(resultSet.getString("addressLine1"));
-                    warehouse.setAddressLine2(resultSet.getString("addressLine2"));
+                    warehouse.setAddressLine1(resultSet.getString("address_line_1"));
+                    warehouse.setAddressLine2(resultSet.getString("address_line_2"));
                     warehouse.setCity(resultSet.getString("city"));
                     warehouse.setState(resultSet.getString("state"));
                     warehouse.setCountry(resultSet.getString("country"));
-                    warehouse.setInventoryQuantity(resultSet.getInt("inventoryQuantity"));
+                    warehouse.setInventoryQuantity(resultSet.getInt("inventory_quantity"));
 
                     warehouses.add(warehouse);
                 }
