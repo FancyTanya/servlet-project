@@ -3,7 +3,6 @@ package com.githab.warehouse.jdbc.dao;
 
 import com.githab.warehouse.domain.Warehouse;
 import com.githab.warehouse.jdbc.DatabaseManager;
-import lombok.SneakyThrows;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +20,7 @@ public class WarehouseDAO {
         DatabaseManager.setup();
     }
 
-    public List<Warehouse> searchWarehouses(int id, String name, String addressLine1, String addressLine2, String city, String state, String country, int inventoryQuantity, int limit, int offset, String sortBy) throws SQLException {
+    public List<Warehouse> searchWarehouses(int id, String name, String addressLine1, String addressLine2, String city, String state, String country, int inventoryQuantity, int limit, int offset, String sortBy) {
         List<Warehouse> warehouses = new ArrayList<>();
         String sql = "SELECT * FROM warehouse WHERE id LIKE ? AND name LIKE ? AND address_line_1 LIKE ? AND address_line_2 LIKE ? AND city LIKE ? AND state LIKE ? AND country LIKE ? AND inventory_quantity >= ? ORDER BY " + sortBy + " LIMIT ? OFFSET ?";
 
@@ -52,7 +51,6 @@ public class WarehouseDAO {
     }
 
 
-    @SneakyThrows
     public int create(Warehouse warehouse) {
         String sql = "INSERT INTO warehouse (id, name, address_line_1, address_line_2, city, state, country, inventory_quantity) " +
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
@@ -127,7 +125,6 @@ public class WarehouseDAO {
             logger.info("{} row(s) deleted from Warehouse with ID: {}", deletedRows, warehouseId);
         } catch (SQLException e) {
             logger.error("Delete Warehouse by ID: {} was caused by {}", warehouseId, e.getCause().toString());
-            e.printStackTrace();
         }
 
         return deletedRows;

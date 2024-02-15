@@ -57,6 +57,12 @@ public class WarehouseResource {
                                  @QueryParam("inventoryQuantity") int inventoryQuantity,
                                  @Context UriInfo uriInfo) {
 
+        if (warehouseDAO.findById(id).isPresent()) {
+            return Response.status(Response.Status.CONFLICT)
+                    .entity(String.format("A warehouse with the specified identifier %s already exists", id))
+                    .build();
+        }
+
         Warehouse warehouse = new Warehouse(id, name, addressLine1, addressLine2, city, state, country, inventoryQuantity);
         long warehouseId = warehouseDAO.create(warehouse);
 
